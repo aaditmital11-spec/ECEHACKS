@@ -1,14 +1,14 @@
 import { Sparkles } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { isStudyMode, modeMeta } from "@/lib/constants";
 import { formatDuration, formatDurationLabel } from "@/lib/time";
-import { modeMeta } from "@/lib/constants";
 import type { ActiveTimerSession, TimerMode } from "@/types/app";
 
 import { LabelChip } from "./label-chip";
 
 function getPhaseLabel(session: ActiveTimerSession | null) {
-  if (!session || session.mode !== "pomodoro") {
+  if (!session || !isStudyMode(session.mode)) {
     return null;
   }
 
@@ -30,6 +30,9 @@ export function TimerCard({
   elapsedMs,
   progress,
   immersive = false,
+  statusLabel,
+  focusStateLabel,
+  warning = false,
 }: {
   mode: TimerMode;
   activeSession: ActiveTimerSession | null;
@@ -37,6 +40,9 @@ export function TimerCard({
   elapsedMs: number;
   progress: number;
   immersive?: boolean;
+  statusLabel?: string;
+  focusStateLabel?: string;
+  warning?: boolean;
 }) {
   const ringProgress = Math.max(2, Math.round(progress * 100));
   const currentMode = activeSession?.mode ?? mode;
@@ -46,7 +52,15 @@ export function TimerCard({
     : "Open-ended";
 
   return (
-    <Card className={immersive ? "rounded-[36px] border-[var(--border-strong)]" : "rounded-[32px]"}>
+    <Card
+      className={
+        immersive
+          ? "rounded-[36px] border-[var(--border-strong)]"
+          : warning
+            ? "rounded-[32px] border-[rgba(255,190,92,0.32)]"
+            : "rounded-[32px]"
+      }
+    >
       <CardContent className={immersive ? "px-8 py-10 md:px-10 md:py-12" : "px-6 py-8 md:px-8 md:py-10"}>
         <div className="flex flex-col gap-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -93,7 +107,7 @@ export function TimerCard({
             <div className="rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-4">
               <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Status</p>
               <p className="mt-2 text-sm font-medium text-[var(--text)]">
-                {activeSession ? (activeSession.isRunning ? "In progress" : "Paused") : "Ready"}
+                {statusLabel ?? (activeSession ? (activeSession.isRunning ? "In progress" : "Paused") : "Ready")}
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-4">
@@ -104,7 +118,7 @@ export function TimerCard({
               <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Focus state</p>
               <div className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--text)]">
                 <Sparkles className="size-4 text-[var(--accent)]" />
-                {immersive ? "Immersive" : "Structured"}
+                {focusStateLabel ?? (immersive ? "Immersive" : "Structured")}
               </div>
             </div>
           </div>
@@ -113,4 +127,3 @@ export function TimerCard({
     </Card>
   );
 }
-

@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     template: "%s | LockedIn.",
   },
   description:
-    "LockedIn. is a serious study timer for deep work—Pomodoro, countdown, stopwatch, and focus tracking in one calm workspace.",
+    "LockedIn. is a serious study timer for deep work with chill, regular, and exam-ready focus sessions in one calm workspace.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -47,4 +47,3 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     </html>
   );
 }
-

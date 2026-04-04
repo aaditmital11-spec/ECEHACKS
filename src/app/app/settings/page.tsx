@@ -13,14 +13,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { PresenceSettingsCard } from "@/components/settings/presence-settings-card";
 import { SettingsPanel } from "@/components/settings/settings-panel";
 import { BathroomBreakCard } from "@/components/timer/bathroom-break-card";
-import { PomodoroPresetControls } from "@/components/timer/pomodoro-preset-controls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useBathroomBreak } from "@/hooks/use-bathroom-break";
+import { studyPresets } from "@/lib/constants";
 import { appThemes } from "@/types/app";
 import { useAppStore } from "@/store/app-store";
 
@@ -46,6 +47,7 @@ export default function SettingsPage() {
   const updateDeepFocusDefault = useAppStore((state) => state.updateDeepFocusDefault);
   const setBathroomBreakDurationSec = useAppStore((state) => state.setBathroomBreakDurationSec);
   const setAbsenceAlertThresholdSec = useAppStore((state) => state.setAbsenceAlertThresholdSec);
+  const updatePresenceSettings = useAppStore((state) => state.updatePresenceSettings);
   const setToggleSetting = useAppStore((state) => state.setToggleSetting);
   const resetAllData = useAppStore((state) => state.resetAllData);
   const { activeBathroomBreak, remainingMs, startBathroomBreak, cancelBathroomBreak } = useBathroomBreak();
@@ -66,14 +68,15 @@ export default function SettingsPage() {
     <div className="grid gap-4 xl:grid-cols-2">
       <SettingsPanel title="Timer defaults" description="Default values used when starting new sessions.">
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-4 md:col-span-2">
-            <PomodoroPresetControls
-              config={settings.timerDefaults.pomodoro}
-              onFocusChange={(focusMin) => updatePomodoroDefaults({ focusDurationMin: focusMin })}
-              onBreakChange={(breakMin) =>
-                updatePomodoroDefaults({ shortBreakDurationMin: breakMin, longBreakDurationMin: breakMin })
-              }
-            />
+          <div className="grid gap-3 md:col-span-2 md:grid-cols-3">
+            {studyPresets.map((preset) => (
+              <div key={preset.id} className="rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-4">
+                <p className="text-sm font-medium text-[var(--text)]">{preset.label}</p>
+                <p className="mt-2 text-sm text-[var(--text-muted)]">
+                  {preset.focusMin}m study, {preset.breakMin}m break
+                </p>
+              </div>
+            ))}
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-[var(--text)]" htmlFor="long-break">
@@ -163,7 +166,9 @@ export default function SettingsPage() {
                 value={settings.defaultMode}
                 onChange={(event) => setDefaultMode(event.target.value as typeof settings.defaultMode)}
               >
-                <option value="pomodoro">Pomodoro</option>
+                <option value="chill">Chill</option>
+                <option value="regular">Regular</option>
+                <option value="exams">Exams</option>
                 <option value="countdown">Countdown</option>
                 <option value="stopwatch">Stopwatch</option>
                 <option value="deep-focus">Deep Focus</option>
@@ -183,7 +188,7 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-4">
             <div>
               <p className="text-sm font-medium text-[var(--text)]">Auto-start next focus phase</p>
-              <p className="mt-1 text-sm text-[var(--text-muted)]">Continue into the next Pomodoro focus block after breaks.</p>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">Continue into the next study block automatically after breaks.</p>
             </div>
             <Switch
               checked={settings.timerDefaults.pomodoro.autoStartNextPhase}
@@ -192,8 +197,8 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-4">
             <div>
-              <p className="text-sm font-medium text-[var(--text)]">Auto-start breaks</p>
-              <p className="mt-1 text-sm text-[var(--text-muted)]">Start Pomodoro break phases immediately after focus blocks.</p>
+              <p className="text-sm font-medium text-[var(--text)]">Auto-start study breaks</p>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">Start the scheduled break immediately after a study block ends.</p>
             </div>
             <Switch
               checked={settings.timerDefaults.pomodoro.autoStartBreak}
@@ -210,6 +215,7 @@ export default function SettingsPage() {
             onStart={startBathroomBreak}
             onCancel={cancelBathroomBreak}
           />
+          <PresenceSettingsCard settings={settings.presence} onChange={updatePresenceSettings} />
         </div>
       </SettingsPanel>
 

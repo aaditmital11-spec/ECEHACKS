@@ -2,20 +2,20 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
-import { subjects } from "@/lib/constants";
+import { isStudyMode, subjects } from "@/lib/constants";
 import {
   createCompletionDraft,
   createSessionRecord,
   createTimerSession,
   getElapsedMs,
-  getPomodoroDurationMs,
+  getStudyDurationMs,
   getRemainingMs,
-  getUpcomingPomodoroPhase,
-  shouldTrackPomodoroSession,
+  getUpcomingStudyPhase,
+  shouldTrackStudySession,
 } from "@/lib/timer";
 import { clamp } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
-import type { ActiveTimerSession, PomodoroPhase, TimerMode } from "@/types/app";
+import type { ActiveTimerSession, CompletionDraft, PomodoroPhase, TimerMode } from "@/types/app";
 
 function playCompletionSound() {
   if (typeof window === "undefined" || !("AudioContext" in window)) {
@@ -57,6 +57,30 @@ function getSubjectLabel(subjectId: string) {
   return subjects.find((subject) => subject.id === subjectId)?.label ?? "Custom";
 }
 
+function saveDraftAsSession(
+  addSession: (session: ReturnType<typeof createSessionRecord>) => void,
+  draft: CompletionDraft,
+  status?: "completed" | "interrupted",
+) {
+  const resolvedStatus = status ?? (draft.completedAsPlanned ? "completed" : "interrupted");
+
+  addSession(
+    createSessionRecord({
+      completion: draft,
+      subjectLabel: getSubjectLabel(draft.subjectId),
+      status: resolvedStatus,
+    }),
+  );
+}
+
+function normalizeCompletionStatus(value?: unknown): "completed" | "interrupted" | undefined {
+  if (value === "completed" || value === "interrupted") {
+    return value;
+  }
+
+  return undefined;
+}
+
 export function useTimerEngine() {
   const settings = useAppStore((state) => state.settings);
   const activeMode = useAppStore((state) => state.activeMode);
@@ -83,20 +107,20 @@ export function useTimerEngine() {
 
     if (settings.notificationsEnabled) {
       const body =
-        session.mode === "pomodoro" && session.pomodoroPhase !== "focus"
+        isStudyMode(session.mode) && session.pomodoroPhase !== "focus"
           ? "Break finished. Ready for the next focus block."
           : `${getSubjectLabel(session.subjectId)} session finished.`;
       await notifyCompletion(body);
     }
 
-    if (session.mode === "pomodoro" && session.pomodoroPhase !== "focus") {
-      const upcoming = getUpcomingPomodoroPhase(session, settings);
+    if (isStudyMode(session.mode) && session.pomodoroPhase !== "focus") {
+      const upcoming = getUpcomingStudyPhase(session, settings);
       setActiveSession(
         createTimerSession({
-          mode: "pomodoro",
+          mode: session.mode,
           subjectId: session.subjectId,
           note: session.note,
-          plannedDurationMs: getPomodoroDurationMs(settings, upcoming.phase),
+          plannedDurationMs: getStudyDurationMs(session.mode, settings, upcoming.phase),
           pomodoroPhase: upcoming.phase,
           pomodoroCycle: upcoming.cycle,
           startImmediately: upcoming.autoStart,
@@ -105,8 +129,8 @@ export function useTimerEngine() {
       return;
     }
 
-    if (session.mode === "pomodoro" && shouldTrackPomodoroSession(session)) {
-      const upcoming = getUpcomingPomodoroPhase(session, settings);
+    if (isStudyMode(session.mode) && shouldTrackStudySession(session)) {
+      const upcoming = getUpcomingStudyPhase(session, settings);
       setCompletionDraft(
         createCompletionDraft({
           session,
@@ -118,10 +142,10 @@ export function useTimerEngine() {
 
       setActiveSession(
         createTimerSession({
-          mode: "pomodoro",
+          mode: session.mode,
           subjectId: session.subjectId,
           note: session.note,
-          plannedDurationMs: getPomodoroDurationMs(settings, upcoming.phase),
+          plannedDurationMs: getStudyDurationMs(session.mode, settings, upcoming.phase),
           pomodoroPhase: upcoming.phase,
           pomodoroCycle: upcoming.cycle,
           startImmediately: upcoming.autoStart,
@@ -194,8 +218,8 @@ export function useTimerEngine() {
     const note = options?.note ?? quickNote;
     let plannedDurationMs: number | undefined;
 
-    if (mode === "pomodoro") {
-      plannedDurationMs = getPomodoroDurationMs(settings, options?.phase ?? "focus");
+    if (isStudyMode(mode)) {
+      plannedDurationMs = getStudyDurationMs(mode, settings, options?.phase ?? "focus");
     }
 
     if (mode === "countdown") {
@@ -251,8 +275,8 @@ export function useTimerEngine() {
       return;
     }
 
-    if (activeSession.mode === "pomodoro" && activeSession.pomodoroPhase !== "focus") {
-      startSession("pomodoro", {
+    if (isStudyMode(activeSession.mode) && activeSession.pomodoroPhase !== "focus") {
+      startSession(activeSession.mode, {
         phase: "focus",
         autoStart: false,
         subjectId: activeSession.subjectId,
@@ -262,7 +286,7 @@ export function useTimerEngine() {
     }
 
     startSession(activeSession.mode, {
-      phase: activeSession.mode === "pomodoro" ? activeSession.pomodoroPhase : undefined,
+      phase: isStudyMode(activeSession.mode) ? activeSession.pomodoroPhase : undefined,
       autoStart: false,
       subjectId: activeSession.subjectId,
       note: activeSession.note,
@@ -282,8 +306,8 @@ export function useTimerEngine() {
       return;
     }
 
-    if (activeSession.mode === "pomodoro" && activeSession.pomodoroPhase !== "focus") {
-      startSession("pomodoro", {
+    if (isStudyMode(activeSession.mode) && activeSession.pomodoroPhase !== "focus") {
+      startSession(activeSession.mode, {
         phase: "focus",
         autoStart: false,
         subjectId: activeSession.subjectId,
@@ -303,12 +327,39 @@ export function useTimerEngine() {
     setActiveSession(null);
   }
 
-  function skipBreak() {
-    if (!activeSession || activeSession.mode !== "pomodoro" || activeSession.pomodoroPhase === "focus") {
+  function failSession() {
+    if (!activeSession) {
       return;
     }
 
-    startSession("pomodoro", {
+    const interruptedAt = Date.now();
+    const actualDurationMs = getElapsedMs(activeSession, interruptedAt);
+
+    if (actualDurationMs >= 1000 && shouldTrackStudySession(activeSession)) {
+      addSession(
+        createSessionRecord({
+          completion: createCompletionDraft({
+            session: activeSession,
+            actualDurationMs,
+            completedAsPlanned: false,
+            endedAt: interruptedAt,
+          }),
+          subjectLabel: getSubjectLabel(activeSession.subjectId),
+          status: "interrupted",
+        }),
+      );
+    }
+
+    setCompletionDraft(null);
+    setActiveSession(null);
+  }
+
+  function skipBreak() {
+    if (!activeSession || !isStudyMode(activeSession.mode) || activeSession.pomodoroPhase === "focus") {
+      return;
+    }
+
+    startSession(activeSession.mode, {
       phase: "focus",
       autoStart: false,
       subjectId: activeSession.subjectId,
@@ -321,15 +372,7 @@ export function useTimerEngine() {
       return;
     }
 
-    const resolvedStatus = status ?? (completionDraft.completedAsPlanned ? "completed" : "interrupted");
-
-    addSession(
-      createSessionRecord({
-        completion: completionDraft,
-        subjectLabel: getSubjectLabel(completionDraft.subjectId),
-        status: resolvedStatus,
-      }),
-    );
+    saveDraftAsSession(addSession, completionDraft, normalizeCompletionStatus(status));
     setQuickNote("");
     setCompletionDraft(null);
   }
@@ -339,8 +382,11 @@ export function useTimerEngine() {
       return;
     }
 
-    const { mode, subjectId, note } = completionDraft;
-    saveCompletion();
+    const draft = completionDraft;
+    const { mode, subjectId, note } = draft;
+
+    saveDraftAsSession(addSession, draft);
+    setCompletionDraft(null);
     startSession(mode, { subjectId, note });
   }
 
@@ -352,7 +398,7 @@ export function useTimerEngine() {
 
     saveCompletion();
 
-    if (activeSession?.mode === "pomodoro" && activeSession.pomodoroPhase !== "focus" && !activeSession.isRunning) {
+    if (activeSession && isStudyMode(activeSession.mode) && activeSession.pomodoroPhase !== "focus" && !activeSession.isRunning) {
       resumeSession();
     }
   }
@@ -374,6 +420,7 @@ export function useTimerEngine() {
     resumeSession,
     resetSession,
     stopSession,
+    failSession,
     skipBreak,
     saveCompletion,
     saveAndStartAnother,

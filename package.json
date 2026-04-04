@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:presence": "node scripts/dev-with-presence.mjs",
+    "presence": "python presence_service.py",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."

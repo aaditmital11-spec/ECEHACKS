@@ -81,9 +81,9 @@ export default function AppOverviewPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Link href="/app/timer" className={cn(buttonVariants({ size: "default" }))}>
+              <Link href="/" className={cn(buttonVariants({ size: "default" }))}>
                 <Clock3 className="size-4" />
-                Open timer
+                Open workspace
               </Link>
               <Link href="/app/dashboard" className={cn(buttonVariants({ variant: "secondary", size: "default" }))}>
                 <BarChart3 className="size-4" />

@@ -1,4 +1,4 @@
-import type { AppSettings, SubjectOption, TimerMode } from "@/types/app";
+import type { AppSettings, StudyMode, SubjectOption, TimerMode } from "@/types/app";
 
 export const appName = "LockedIn.";
 
@@ -13,38 +13,68 @@ export const subjects: SubjectOption[] = [
   { id: "custom", label: "Custom", color: "rgba(214, 109, 84, 0.14)", textColor: "#ffe1d8" },
 ];
 
+export const studyPresets = [
+  { id: "chill", label: "Chill", focusMin: 30, breakMin: 30 },
+  { id: "regular", label: "Regular", focusMin: 60, breakMin: 30 },
+  { id: "exams", label: "Exams", focusMin: 120, breakMin: 20 },
+] as const satisfies ReadonlyArray<{
+  id: StudyMode;
+  label: string;
+  focusMin: number;
+  breakMin: number;
+}>;
+
+export function isStudyMode(mode: string): mode is StudyMode {
+  return studyPresets.some((preset) => preset.id === mode);
+}
+
+export function getStudyPreset(mode: string) {
+  return studyPresets.find((preset) => preset.id === mode);
+}
+
 export const modeMeta: Record<
   TimerMode,
   { label: string; description: string; accent: string; compactDescription: string }
 > = {
-  pomodoro: {
-    label: "Pomodoro",
-    description: "Structured focus and break cycles for consistent study blocks.",
-    compactDescription: "Guided focus cycles",
+  chill: {
+    label: "Chill",
+    description: "30 minute study blocks paired with generous 30 minute breaks.",
+    compactDescription: "30m study, 30m break",
+    accent: "#ff9560",
+  },
+  regular: {
+    label: "Regular",
+    description: "60 minute study blocks with balanced 30 minute recovery breaks.",
+    compactDescription: "60m study, 30m break",
     accent: "#ff7a52",
+  },
+  exams: {
+    label: "Exams",
+    description: "120 minute study blocks built for heavier prep with shorter breaks.",
+    compactDescription: "120m study, 20m break",
+    accent: "#db5d46",
   },
   countdown: {
     label: "Countdown",
     description: "Set a target duration and work toward a defined finish.",
     compactDescription: "Fixed-duration sessions",
-    accent: "#ff9560",
+    accent: "#ffab73",
   },
   stopwatch: {
     label: "Stopwatch",
     description: "Track open-ended work without preset limits.",
     compactDescription: "Open-ended tracking",
-    accent: "#ff8b63",
+    accent: "#d66d54",
   },
   "deep-focus": {
     label: "Deep Focus",
     description: "A quieter, stripped-down timer for uninterrupted concentration.",
     compactDescription: "Immersive focus mode",
-    accent: "#db5d46",
+    accent: "#c95a41",
   },
 };
 
 export const navItems = [
-  { href: "/app", label: "Overview" },
   { href: "/app/dashboard", label: "Dashboard" },
   { href: "/app/history", label: "History" },
   { href: "/app/settings", label: "Settings" },
@@ -52,12 +82,20 @@ export const navItems = [
 
 export const defaultSettings: AppSettings = {
   theme: "graphite",
-  defaultMode: "pomodoro",
+  defaultMode: "regular",
   soundEnabled: true,
   notificationsEnabled: false,
   reduceMotion: false,
   bathroomBreakDurationSec: 120,
   absenceAlertThresholdSec: 90,
+  presence: {
+    enabled: false,
+    minimumAbsenceSec: 10,
+    recoveryDurationSec: 60,
+    autoResume: false,
+    alarmEnabled: true,
+    cameraPanelVisible: true,
+  },
   timerDefaults: {
     pomodoro: {
       focusDurationMin: 45,
@@ -73,12 +111,6 @@ export const defaultSettings: AppSettings = {
     deepFocusDurationMin: 90,
   },
 };
-
-export const studyPresets = [
-  { id: "chill", label: "Chill", focusMin: 30, breakMin: 30 },
-  { id: "regular", label: "Regular", focusMin: 60, breakMin: 30 },
-  { id: "exams", label: "Exams", focusMin: 120, breakMin: 20 },
-] as const;
 
 export const focusQuotes = [
   "A deliberate session beats a distracted hour.",

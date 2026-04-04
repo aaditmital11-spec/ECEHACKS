@@ -61,7 +61,9 @@ export default function HistoryPage() {
         <CardContent className="grid gap-3 px-6 py-6 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.2fr_auto]">
           <Select value={modeFilter} onChange={(event) => setModeFilter(event.target.value)}>
             <option value="all">All modes</option>
-            <option value="pomodoro">Pomodoro</option>
+            <option value="chill">Chill</option>
+            <option value="regular">Regular</option>
+            <option value="exams">Exams</option>
             <option value="countdown">Countdown</option>
             <option value="stopwatch">Stopwatch</option>
             <option value="deep-focus">Deep Focus</option>

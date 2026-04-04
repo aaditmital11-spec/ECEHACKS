@@ -10,10 +10,36 @@ import type {
   AppSettings,
   CompletionDraft,
   PomodoroConfig,
+  PresenceRuntimeState,
   SessionRecord,
   TodoItem,
   TimerMode,
 } from "@/types/app";
+import { timerModes } from "@/types/app";
+
+function migrateLegacyMode(mode: unknown, fallback = defaultSettings.defaultMode): TimerMode {
+  if (typeof mode === "string" && timerModes.includes(mode as TimerMode)) {
+    return mode as TimerMode;
+  }
+
+  if (mode === "pomodoro") {
+    return "regular";
+  }
+
+  return fallback;
+}
+
+function migrateMinimumAbsence(value: unknown) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return defaultSettings.presence.minimumAbsenceSec;
+  }
+
+  if (value === 20) {
+    return 10;
+  }
+
+  return value;
+}
 
 interface AppStoreState {
   hydrated: boolean;
@@ -25,6 +51,7 @@ interface AppStoreState {
   quickNote: string;
   activeSession: ActiveTimerSession | null;
   activeBathroomBreak: { id: string; startedAt: number; endsAt: number; alertedAt: number | null } | null;
+  presenceRuntime: PresenceRuntimeState;
   completionDraft: CompletionDraft | null;
   setHydrated: (value: boolean) => void;
   setActiveMode: (mode: TimerMode) => void;
@@ -37,6 +64,7 @@ interface AppStoreState {
   updateDeepFocusDefault: (durationMin: number) => void;
   setBathroomBreakDurationSec: (seconds: number) => void;
   setAbsenceAlertThresholdSec: (seconds: number) => void;
+  updatePresenceSettings: (patch: Partial<AppSettings["presence"]>) => void;
   setDefaultMode: (mode: TimerMode) => void;
   setToggleSetting: (
     key: "soundEnabled" | "notificationsEnabled" | "reduceMotion",
@@ -50,6 +78,8 @@ interface AppStoreState {
   patchActiveBathroomBreak: (
     patch: Partial<{ id: string; startedAt: number; endsAt: number; alertedAt: number | null }>,
   ) => void;
+  patchPresenceRuntime: (patch: Partial<PresenceRuntimeState>) => void;
+  resetPresenceRuntime: () => void;
   setCompletionDraft: (draft: CompletionDraft | null) => void;
   updateCompletionNote: (note: string) => void;
   addSession: (session: SessionRecord) => void;
@@ -71,6 +101,25 @@ const initialState = {
   quickNote: "",
   activeSession: null as ActiveTimerSession | null,
   activeBathroomBreak: null as { id: string; startedAt: number; endsAt: number; alertedAt: number | null } | null,
+  presenceRuntime: {
+    isPresent: true,
+    lastPresentAt: null,
+    absentDurationMs: 0,
+    hasTriggeredAbsenceEvent: false,
+    isRecoveryCountdownActive: false,
+    recoveryStartedAt: null,
+    recoveryDeadlineAt: null,
+    recoveryTimeRemainingMs: 0,
+    isAlarmPlaying: false,
+    sessionFailureReason: null,
+    serviceStatus: "offline",
+    cameraStatus: "offline",
+    serviceError: null,
+    confidence: null,
+    previewAvailable: false,
+    lastServiceUpdateAt: null,
+    awaitingManualResume: false,
+  } satisfies PresenceRuntimeState,
   completionDraft: null as CompletionDraft | null,
 };
 
@@ -140,6 +189,16 @@ export const useAppStore = create<AppStoreState>()(
             absenceAlertThresholdSec: seconds,
           },
         })),
+      updatePresenceSettings: (patch) =>
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            presence: {
+              ...state.settings.presence,
+              ...patch,
+            },
+          },
+        })),
       setDefaultMode: (mode) =>
         set((state) => ({
           activeMode: mode,
@@ -164,6 +223,28 @@ export const useAppStore = create<AppStoreState>()(
       patchActiveBathroomBreak: (patch) =>
         set((state) => ({
           activeBathroomBreak: state.activeBathroomBreak ? { ...state.activeBathroomBreak, ...patch } : null,
+        })),
+      patchPresenceRuntime: (patch) =>
+        set((state) => ({
+          presenceRuntime: {
+            ...state.presenceRuntime,
+            ...patch,
+          },
+        })),
+      resetPresenceRuntime: () =>
+        set((state) => ({
+          presenceRuntime: {
+            ...initialState.presenceRuntime,
+            serviceStatus: state.presenceRuntime.serviceStatus,
+            cameraStatus: state.presenceRuntime.cameraStatus,
+            serviceError: state.presenceRuntime.serviceError,
+            confidence: state.presenceRuntime.confidence,
+            previewAvailable: state.presenceRuntime.previewAvailable,
+            lastServiceUpdateAt: state.presenceRuntime.lastServiceUpdateAt,
+            isPresent: state.presenceRuntime.isPresent,
+            lastPresentAt: state.presenceRuntime.lastPresentAt,
+            absentDurationMs: state.presenceRuntime.absentDurationMs,
+          },
         })),
       setCompletionDraft: (completionDraft) => set({ completionDraft }),
       updateCompletionNote: (note) =>
@@ -236,7 +317,28 @@ export const useAppStore = create<AppStoreState>()(
         completionDraft: state.completionDraft,
       }),
       onRehydrateStorage: () => (state) => {
-        state?.setHydrated(true);
+        if (state) {
+          state.settings.defaultMode = migrateLegacyMode(state.settings.defaultMode, defaultSettings.defaultMode);
+          state.settings.presence.minimumAbsenceSec = migrateMinimumAbsence(state.settings.presence.minimumAbsenceSec);
+          state.activeMode = migrateLegacyMode(state.activeMode, state.settings.defaultMode);
+          state.sessions = state.sessions.map((session) => ({
+            ...session,
+            mode: migrateLegacyMode(session.mode, state.settings.defaultMode),
+          }));
+          state.activeSession = state.activeSession
+            ? {
+                ...state.activeSession,
+                mode: migrateLegacyMode(state.activeSession.mode, state.settings.defaultMode),
+              }
+            : null;
+          state.completionDraft = state.completionDraft
+            ? {
+                ...state.completionDraft,
+                mode: migrateLegacyMode(state.completionDraft.mode, state.settings.defaultMode),
+              }
+            : null;
+          state.setHydrated(true);
+        }
       },
     },
   ),

@@ -15,12 +15,14 @@ export function TodoPanel({
   onToggle,
   onDelete,
   onClearCompleted,
+  compact = false,
 }: {
   todos: TodoItem[];
   onAdd: (text: string) => void;
   onToggle: (todoId: string) => void;
   onDelete: (todoId: string) => void;
   onClearCompleted: () => void;
+  compact?: boolean;
 }) {
   const [text, setText] = useState("");
   const openTodos = useMemo(() => todos.filter((todo) => !todo.completedAt), [todos]);
@@ -38,11 +40,11 @@ export function TodoPanel({
 
   return (
     <Card className="rounded-[32px]">
-      <CardHeader>
+      <CardHeader className={compact ? "pb-3" : undefined}>
         <CardTitle>To do</CardTitle>
         <CardDescription>Keep the work visible while the timer runs.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-5">
+      <CardContent className={compact ? "space-y-4" : "space-y-5"}>
         <div className="flex gap-2">
           <Input
             value={text}
@@ -61,7 +63,7 @@ export function TodoPanel({
           </Button>
         </div>
 
-        <div className="space-y-2">
+        <div className={compact ? "space-y-1.5" : "space-y-2"}>
           {openTodos.length === 0 ? (
             <p className="rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-4 text-sm leading-6 text-[var(--text-muted)]">
               No active tasks. Add a few concrete steps before you start.
@@ -70,7 +72,9 @@ export function TodoPanel({
             openTodos.map((todo) => (
               <div
                 key={todo.id}
-                className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-4"
+                className={compact
+                  ? "flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-3"
+                  : "flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-4"}
               >
                 <button
                   type="button"
@@ -93,7 +97,13 @@ export function TodoPanel({
           )}
         </div>
 
-        <div className="rounded-[24px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-4">
+        <div
+          className={
+            compact
+              ? "rounded-[24px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-3.5"
+              : "rounded-[24px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-4"
+          }
+        >
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-[var(--text)]">Completed</p>
@@ -116,4 +126,3 @@ export function TodoPanel({
     </Card>
   );
 }
-

@@ -1,6 +1,7 @@
 import { Pause, Play, RotateCcw, SkipForward, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { isStudyMode } from "@/lib/constants";
 import type { ActiveTimerSession } from "@/types/app";
 
 export function TimerControls({
@@ -11,6 +12,10 @@ export function TimerControls({
   onReset,
   onStop,
   onSkipBreak,
+  startDisabled = false,
+  resumeDisabled = false,
+  startLabel = "Start session",
+  resumeLabel = "Resume",
 }: {
   activeSession: ActiveTimerSession | null;
   onStart: () => void;
@@ -19,13 +24,17 @@ export function TimerControls({
   onReset: () => void;
   onStop: () => void;
   onSkipBreak: () => void;
+  startDisabled?: boolean;
+  resumeDisabled?: boolean;
+  startLabel?: string;
+  resumeLabel?: string;
 }) {
   if (!activeSession) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="lg" onClick={onStart}>
+        <Button size="lg" disabled={startDisabled} onClick={onStart}>
           <Play className="size-4" />
-          Start session
+          {startLabel}
         </Button>
         <Button variant="secondary" size="lg" onClick={onReset}>
           <RotateCcw className="size-4" />
@@ -43,9 +52,9 @@ export function TimerControls({
           Pause
         </Button>
       ) : (
-        <Button size="lg" onClick={onResume}>
+        <Button size="lg" disabled={resumeDisabled} onClick={onResume}>
           <Play className="size-4" />
-          Resume
+          {resumeLabel}
         </Button>
       )}
       <Button variant="secondary" size="lg" onClick={onReset}>
@@ -54,9 +63,9 @@ export function TimerControls({
       </Button>
       <Button variant="secondary" size="lg" onClick={onStop}>
         <Square className="size-4" />
-        {activeSession.mode === "pomodoro" && activeSession.pomodoroPhase !== "focus" ? "End break" : "Stop"}
+        {isStudyMode(activeSession.mode) && activeSession.pomodoroPhase !== "focus" ? "End break" : "Stop"}
       </Button>
-      {activeSession.mode === "pomodoro" && activeSession.pomodoroPhase !== "focus" ? (
+      {isStudyMode(activeSession.mode) && activeSession.pomodoroPhase !== "focus" ? (
         <Button variant="ghost" size="lg" onClick={onSkipBreak}>
           <SkipForward className="size-4" />
           Skip break

@@ -1,3 +1,4 @@
+import { getStudyPreset, isStudyMode } from "@/lib/constants";
 import { createId } from "@/lib/utils";
 import type {
   ActiveTimerSession,
@@ -8,18 +9,23 @@ import type {
   TimerMode,
 } from "@/types/app";
 
-export function getPomodoroDurationMs(settings: AppSettings, phase: PomodoroPhase) {
+export function getStudyDurationMs(mode: TimerMode, settings: AppSettings, phase: PomodoroPhase) {
+  const studyPreset = getStudyPreset(mode);
   const config = settings.timerDefaults.pomodoro;
 
+  if (!studyPreset) {
+    return undefined;
+  }
+
   if (phase === "short-break") {
-    return config.shortBreakDurationMin * 60000;
+    return studyPreset.breakMin * 60000;
   }
 
   if (phase === "long-break") {
     return config.longBreakDurationMin * 60000;
   }
 
-  return config.focusDurationMin * 60000;
+  return studyPreset.focusMin * 60000;
 }
 
 export function getElapsedMs(session: ActiveTimerSession, now = Date.now()) {
@@ -106,11 +112,23 @@ export function createSessionRecord(input: {
   } satisfies SessionRecord;
 }
 
-export function shouldTrackPomodoroSession(session: ActiveTimerSession) {
-  return session.mode !== "pomodoro" || session.pomodoroPhase === "focus";
+export function shouldTrackStudySession(session: ActiveTimerSession) {
+  return !isStudyMode(session.mode) || session.pomodoroPhase === "focus";
 }
 
-export function getUpcomingPomodoroPhase(session: ActiveTimerSession, settings: AppSettings) {
+export function isPresenceSensitiveSession(session: ActiveTimerSession) {
+  return shouldTrackStudySession(session);
+}
+
+export function getUpcomingStudyPhase(session: ActiveTimerSession, settings: AppSettings) {
+  if (!isStudyMode(session.mode)) {
+    return {
+      phase: "focus" as const,
+      cycle: session.pomodoroCycle,
+      autoStart: false,
+    };
+  }
+
   if (session.pomodoroPhase === "focus") {
     const nextCycle = session.pomodoroCycle + 1;
     const useLongBreak = nextCycle % settings.timerDefaults.pomodoro.cyclesBeforeLongBreak === 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Coffee, RotateCcw, Save } from "lucide-react";
+import { Coffee, RotateCcw, Save, X } from "lucide-react";
 
 import {
   Dialog,
@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { modeMeta } from "@/lib/constants";
+import { isStudyMode, modeMeta } from "@/lib/constants";
 import { formatClock, formatDurationLabel } from "@/lib/time";
 import type { ActiveTimerSession, CompletionDraft } from "@/types/app";
 
@@ -24,6 +24,7 @@ export function CompletionModal({
   onSave,
   onStartAnother,
   onStartBreak,
+  onDismiss,
   onNoteChange,
 }: {
   draft: CompletionDraft | null;
@@ -31,13 +32,21 @@ export function CompletionModal({
   onSave: () => void;
   onStartAnother: () => void;
   onStartBreak: () => void;
+  onDismiss: () => void;
   onNoteChange: (note: string) => void;
 }) {
   const showBreakAction =
-    draft?.mode === "pomodoro" && activeSession?.mode === "pomodoro" && activeSession.pomodoroPhase !== "focus";
+    Boolean(draft && isStudyMode(draft.mode) && activeSession && activeSession.mode === draft.mode && activeSession.pomodoroPhase !== "focus");
 
   return (
-    <Dialog open={Boolean(draft)}>
+    <Dialog
+      open={Boolean(draft)}
+      onOpenChange={(open) => {
+        if (!open) {
+          onDismiss();
+        }
+      }}
+    >
       <DialogContent>
         {draft ? (
           <>
@@ -89,17 +98,21 @@ export function CompletionModal({
               </div>
             </div>
             <DialogFooter>
-              <Button variant="secondary" onClick={onSave}>
+              <Button variant="ghost" onClick={() => onDismiss()}>
+                <X className="size-4" />
+                Close
+              </Button>
+              <Button variant="secondary" onClick={() => onSave()}>
                 <Save className="size-4" />
-                Save and continue
+                Save only
               </Button>
               {showBreakAction ? (
-                <Button variant="subtle" onClick={onStartBreak}>
+                <Button variant="subtle" onClick={() => onStartBreak()}>
                   <Coffee className="size-4" />
                   Start break
                 </Button>
               ) : null}
-              <Button onClick={onStartAnother}>
+              <Button onClick={() => onStartAnother()}>
                 <RotateCcw className="size-4" />
                 Start another session
               </Button>

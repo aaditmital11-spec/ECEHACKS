@@ -1,0 +1,4 @@
+# Python deps for facial presence (facial.py, presence_detector.py)
+opencv-python>=4.8.0
+numpy>=1.24.0
+mediapipe>=0.10.0
