@@ -111,11 +111,23 @@ export default function TimerPage() {
         <div className="space-y-4">
           <Card className="rounded-[32px]">
             <CardHeader>
-              <CardTitle>Timer workspace</CardTitle>
+              <CardTitle>LockedIn. workspace</CardTitle>
               <CardDescription>Structured controls, calm surfaces, and reliable local state.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <ModeSwitcher value={activeMode} onChange={setActiveMode} disabled={Boolean(activeSession)} />
+              <ModeSwitcher
+                value={activeMode}
+                pomodoroConfig={settings.timerDefaults.pomodoro}
+                onChange={setActiveMode}
+                onApplyPreset={(focusMin, breakMin) =>
+                  updatePomodoroDefaults({
+                    focusDurationMin: focusMin,
+                    shortBreakDurationMin: breakMin,
+                    longBreakDurationMin: breakMin,
+                  })
+                }
+                disabled={Boolean(activeSession)}
+              />
               {activeSession ? (
                 <p className="text-sm text-[var(--text-subtle)]">
                   Finish or stop the current session before switching modes.
@@ -215,13 +227,6 @@ export default function TimerPage() {
                   <PomodoroPresetControls
                     config={settings.timerDefaults.pomodoro}
                     disabled={Boolean(activeSession)}
-                    onApplyPreset={(focusMin, breakMin) =>
-                      updatePomodoroDefaults({
-                        focusDurationMin: focusMin,
-                        shortBreakDurationMin: breakMin,
-                        longBreakDurationMin: breakMin,
-                      })
-                    }
                     onFocusChange={(focusMin) =>
                       updatePomodoroDefaults({ focusDurationMin: clampNumber(focusMin, 15, 180) })
                     }

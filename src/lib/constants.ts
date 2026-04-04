@@ -1,6 +1,8 @@
 import type { AppSettings, SubjectOption, TimerMode } from "@/types/app";
 
-export const appName = "lockedIn.";
+export const appName = "LockedIn.";
+
+export const appTagline = "LockedIn. is a focused study timer you can use immediately.";
 
 export const subjects: SubjectOption[] = [
   { id: "math", label: "Math", color: "rgba(255, 121, 82, 0.16)", textColor: "#ffe2d7" },

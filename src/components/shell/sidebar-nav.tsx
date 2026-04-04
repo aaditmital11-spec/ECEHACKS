@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, History, LayoutDashboard, Settings } from "lucide-react";
 
-import { appName, navItems } from "@/lib/constants";
+import { appName, appTagline, navItems } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 const icons = {
@@ -26,9 +26,7 @@ export function SidebarNav() {
         <h1 className="text-[3.35rem] font-semibold leading-none tracking-[-0.07em] text-[var(--text)]">
           {appName}
         </h1>
-        <p className="mt-4 max-w-[180px] text-sm leading-6 text-[var(--text-muted)]">
-          A focused study timer you can use immediately.
-        </p>
+        <p className="mt-4 max-w-[180px] text-sm leading-6 text-[var(--text-muted)]">{appTagline}</p>
       </Link>
       <nav className="mt-6 space-y-1">
         {navItems.map((item) => {

@@ -16,7 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { getDashboardAnalytics } from "@/lib/analytics";
-import { appName, focusQuotes, modeMeta, subjects } from "@/lib/constants";
+import { appName, appTagline, focusQuotes, modeMeta, subjects } from "@/lib/constants";
 import { formatClock, formatDuration, formatDurationLabel } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useBathroomBreak } from "@/hooks/use-bathroom-break";
@@ -38,6 +38,9 @@ function getPomodoroPhaseLabel(phase: "focus" | "short-break" | "long-break") {
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value || min, min), max);
 }
+
+const landingFrame = "mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8 xl:px-10";
+const landingGridGap = "gap-5";
 
 export default function LandingPage() {
   const hydrated = useAppStore((state) => state.hydrated);
@@ -99,9 +102,12 @@ export default function LandingPage() {
   if (!hydrated) {
     return (
       <main className="min-h-screen">
-        <section className="mx-auto w-full max-w-[1360px] px-4 py-6 md:px-6 md:py-8">
+        <section className={landingFrame}>
           <div className="h-14 w-56 rounded-2xl bg-white/5" />
-          <div className="mx-auto mt-10 h-[560px] max-w-[960px] rounded-[40px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)]" />
+          <div className="mt-8 grid items-start gap-5 xl:grid-cols-[336px_minmax(0,1fr)]">
+            <div className="h-[620px] rounded-[32px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)]" />
+            <div className="h-[620px] rounded-[40px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)]" />
+          </div>
         </section>
       </main>
     );
@@ -109,7 +115,7 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen">
-      <section className="mx-auto w-full max-w-[1360px] px-4 py-6 md:px-6 md:py-8">
+      <section className={landingFrame}>
         <header className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <Link
@@ -118,9 +124,7 @@ export default function LandingPage() {
             >
               {appName}
             </Link>
-            <p className="max-w-md text-sm leading-6 text-[var(--text-muted)]">
-              A focused study timer you can use immediately.
-            </p>
+            <p className="max-w-md text-sm leading-6 text-[var(--text-muted)]">{appTagline}</p>
           </div>
           <nav className="flex items-center gap-2 self-start">
             <Link
@@ -140,7 +144,7 @@ export default function LandingPage() {
           </nav>
         </header>
 
-        <section className="mx-auto mt-8 grid w-full max-w-[1320px] gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <section className={`mt-8 grid items-start ${landingGridGap} xl:grid-cols-[336px_minmax(0,1fr)]`}>
           <TodoPanel
             todos={todos}
             onAdd={addTodo}
@@ -152,7 +156,19 @@ export default function LandingPage() {
           <Card className="surface-grid rounded-[40px] border-[var(--border-strong)]">
             <CardContent className="space-y-6 px-4 py-4 md:px-8 md:py-8">
               <div className="space-y-4">
-                <ModeSwitcher value={activeMode} onChange={setActiveMode} disabled={Boolean(activeSession)} />
+                <ModeSwitcher
+                  value={activeMode}
+                  pomodoroConfig={settings.timerDefaults.pomodoro}
+                  onChange={setActiveMode}
+                  onApplyPreset={(focusMin, breakMin) =>
+                    updatePomodoroDefaults({
+                      focusDurationMin: focusMin,
+                      shortBreakDurationMin: breakMin,
+                      longBreakDurationMin: breakMin,
+                    })
+                  }
+                  disabled={Boolean(activeSession)}
+                />
                 {activeSession ? (
                   <p className="text-center text-sm text-[var(--text-subtle)]">
                     Finish or stop the current session before switching modes.
@@ -255,13 +271,6 @@ export default function LandingPage() {
                   <PomodoroPresetControls
                     config={settings.timerDefaults.pomodoro}
                     disabled={Boolean(activeSession)}
-                    onApplyPreset={(focusMin, breakMin) =>
-                      updatePomodoroDefaults({
-                        focusDurationMin: focusMin,
-                        shortBreakDurationMin: breakMin,
-                        longBreakDurationMin: breakMin,
-                      })
-                    }
                     onFocusChange={(focusMin) => updatePomodoroDefaults({ focusDurationMin: clampNumber(focusMin, 15, 180) })}
                     onBreakChange={(breakMin) =>
                       updatePomodoroDefaults({
@@ -344,7 +353,7 @@ export default function LandingPage() {
           </Card>
         </section>
 
-        <section className="mx-auto mt-5 grid w-full max-w-[1320px] gap-4 lg:grid-cols-[0.72fr_0.72fr_1fr_1.18fr]">
+        <section className={`mt-5 grid ${landingGridGap} lg:grid-cols-[0.78fr_0.78fr_0.88fr_1.16fr]`}>
           <div className="rounded-[28px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-5 py-5">
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Today</p>
             <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text)]">

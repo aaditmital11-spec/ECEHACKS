@@ -2,6 +2,7 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
+import { appName } from "@/lib/constants";
 import { useAppStore } from "@/store/app-store";
 import { formatSecondsLabel } from "@/lib/time";
 import { createId } from "@/lib/utils";
@@ -60,7 +61,7 @@ export function useBathroomBreak() {
     }
 
     if (settings.notificationsEnabled) {
-      await notify("Bathroom break complete", "Time to get back to work.");
+      await notify(`${appName} Bathroom break complete`, "Time to get back to work.");
     }
 
     setActiveBathroomBreak(null);
@@ -77,7 +78,7 @@ export function useBathroomBreak() {
 
     if (settings.notificationsEnabled) {
       await notify(
-        "Away too long",
+        `${appName} Away too long`,
         `You have been away for ${formatSecondsLabel(settings.absenceAlertThresholdSec)}.`,
       );
     }

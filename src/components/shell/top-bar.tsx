@@ -6,7 +6,7 @@ import { Menu, MoonStar } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
-import { navItems } from "@/lib/constants";
+import { appName, navItems } from "@/lib/constants";
 import { useAppStore } from "@/store/app-store";
 
 const titles: Record<string, { title: string; description: string }> = {
@@ -49,9 +49,9 @@ export function TopBar() {
         <div>
           <Link
             href="/"
-            className="focus-ring inline-flex rounded-lg text-xs uppercase tracking-[0.22em] text-[var(--text-subtle)] transition-colors hover:text-[var(--text)]"
+            className="focus-ring inline-flex rounded-lg text-xs font-medium tracking-tight text-[var(--text-subtle)] transition-colors hover:text-[var(--text)]"
           >
-            lockedIn.
+            {appName}
           </Link>
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--text)]">{current.title}</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">{current.description}</p>

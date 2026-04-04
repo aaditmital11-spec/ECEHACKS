@@ -28,8 +28,12 @@ const themeScript = `
 `;
 
 export const metadata: Metadata = {
-  title: "lockedIn. | Study timer platform",
-  description: "A serious study timer for students who care about deep work.",
+  title: {
+    default: "LockedIn.",
+    template: "%s | LockedIn.",
+  },
+  description:
+    "LockedIn. is a serious study timer for deep work—Pomodoro, countdown, stopwatch, and focus tracking in one calm workspace.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

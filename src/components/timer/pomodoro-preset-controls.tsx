@@ -1,7 +1,5 @@
-import { studyPresets } from "@/lib/constants";
 import type { PomodoroConfig } from "@/types/app";
 
-import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 
 function minutesLabel(value: number) {
@@ -11,38 +9,16 @@ function minutesLabel(value: number) {
 export function PomodoroPresetControls({
   config,
   disabled = false,
-  onApplyPreset,
   onFocusChange,
   onBreakChange,
 }: {
   config: PomodoroConfig;
   disabled?: boolean;
-  onApplyPreset: (focusMin: number, breakMin: number) => void;
   onFocusChange: (focusMin: number) => void;
   onBreakChange: (breakMin: number) => void;
 }) {
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-sm font-medium text-[var(--text)]">Study intensity</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          {studyPresets.map((preset) => (
-            <Button
-              key={preset.id}
-              variant="secondary"
-              disabled={disabled}
-              className="justify-between rounded-2xl px-4 py-4"
-              onClick={() => onApplyPreset(preset.focusMin, preset.breakMin)}
-            >
-              <span>{preset.label}</span>
-              <span className="text-xs text-[var(--text-subtle)]">
-                {preset.focusMin}/{preset.breakMin}
-              </span>
-            </Button>
-          ))}
-        </div>
-      </div>
-
       <div className="grid gap-5 md:grid-cols-2">
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">

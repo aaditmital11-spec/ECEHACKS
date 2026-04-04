@@ -69,13 +69,6 @@ export default function SettingsPage() {
           <div className="space-y-4 md:col-span-2">
             <PomodoroPresetControls
               config={settings.timerDefaults.pomodoro}
-              onApplyPreset={(focusMin, breakMin) =>
-                updatePomodoroDefaults({
-                  focusDurationMin: focusMin,
-                  shortBreakDurationMin: breakMin,
-                  longBreakDurationMin: breakMin,
-                })
-              }
               onFocusChange={(focusMin) => updatePomodoroDefaults({ focusDurationMin: focusMin })}
               onBreakChange={(breakMin) =>
                 updatePomodoroDefaults({ shortBreakDurationMin: breakMin, longBreakDurationMin: breakMin })
