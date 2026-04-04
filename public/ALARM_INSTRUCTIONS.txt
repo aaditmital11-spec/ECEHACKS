@@ -1,0 +1,4 @@
+Place your alarm sound here as alarm.mp3.
+
+Example path:
+public/alarm.mp3

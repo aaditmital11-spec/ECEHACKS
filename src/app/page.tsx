@@ -1,429 +1,530 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo } from "react";
-import { History, Settings2 } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CompletionModal } from "@/components/timer/completion-modal";
-import { BathroomBreakCard } from "@/components/timer/bathroom-break-card";
-import { LabelChip } from "@/components/timer/label-chip";
-import { ModeSwitcher } from "@/components/timer/mode-switcher";
-import { PomodoroPresetControls } from "@/components/timer/pomodoro-preset-controls";
-import { TimerControls } from "@/components/timer/timer-controls";
-import { TodoPanel } from "@/components/todo/todo-panel";
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { getDashboardAnalytics } from "@/lib/analytics";
-import { appName, appTagline, focusQuotes, modeMeta, subjects } from "@/lib/constants";
-import { formatClock, formatDuration, formatDurationLabel } from "@/lib/time";
-import { cn } from "@/lib/utils";
-import { useBathroomBreak } from "@/hooks/use-bathroom-break";
-import { useTimerEngine } from "@/hooks/use-timer-engine";
-import { useAppStore } from "@/store/app-store";
+type SessionState = {
+  active: boolean;
+  mode: "chill" | "regular" | "exams" | "custom";
+  phase: "study" | "break";
+  manual_paused: boolean;
+  bathroom_break_active: boolean;
+  bathroom_seconds_left: number;
+  phase_remaining_seconds: number;
+  total_active_seconds: number;
+  max_session_seconds: number;
+  started_at: string | null;
+  ended_reason: string | null;
+};
 
-function getPomodoroPhaseLabel(phase: "focus" | "short-break" | "long-break") {
-  if (phase === "short-break") {
-    return "Short break";
+type BackendStatus = {
+  running: boolean;
+  present: boolean;
+  alert_active: boolean;
+  time_present: string | null;
+  absence_started_at: string | null;
+  seconds_until_alert: number;
+  last_check_at: string | null;
+  last_error: string | null;
+  config: {
+    poll_interval_seconds: number;
+    absence_timeout_seconds: number;
+    study_duration_seconds: number;
+    break_duration_seconds: number;
+    bathroom_break_seconds: number;
+  };
+  session?: SessionState;
+};
+
+type Todo = {
+  id: string;
+  text: string;
+  done: boolean;
+};
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:8000";
+
+const MODE_PRESETS = {
+  chill: { study: 30 * 60, break: 30 * 60 },
+  regular: { study: 60 * 60, break: 30 * 60 },
+  exams: { study: 120 * 60, break: 20 * 60 },
+} as const;
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${BACKEND_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
   }
 
-  if (phase === "long-break") {
-    return "Long break";
-  }
-
-  return "Focus block";
+  return (await response.json()) as T;
 }
 
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(Math.max(value || min, min), max);
+function formatClock(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return [hours, minutes, secs].map((part) => String(part).padStart(2, "0")).join(":");
 }
 
-const landingFrame = "mx-auto w-full max-w-[1440px] px-5 py-6 md:px-8 md:py-8 xl:px-10";
-const landingGridGap = "gap-5";
+function secondsToMinutesString(seconds: number) {
+  return (seconds / 60).toFixed(0);
+}
 
-export default function LandingPage() {
-  const hydrated = useAppStore((state) => state.hydrated);
-  const settings = useAppStore((state) => state.settings);
-  const sessions = useAppStore((state) => state.sessions);
-  const todos = useAppStore((state) => state.todos);
-  const activeMode = useAppStore((state) => state.activeMode);
-  const selectedSubjectId = useAppStore((state) => state.selectedSubjectId);
-  const quickNote = useAppStore((state) => state.quickNote);
-  const setActiveMode = useAppStore((state) => state.setActiveMode);
-  const setSelectedSubjectId = useAppStore((state) => state.setSelectedSubjectId);
-  const setQuickNote = useAppStore((state) => state.setQuickNote);
-  const addTodo = useAppStore((state) => state.addTodo);
-  const toggleTodo = useAppStore((state) => state.toggleTodo);
-  const deleteTodo = useAppStore((state) => state.deleteTodo);
-  const clearCompletedTodos = useAppStore((state) => state.clearCompletedTodos);
-  const updatePomodoroDefaults = useAppStore((state) => state.updatePomodoroDefaults);
-  const updateCountdownDefault = useAppStore((state) => state.updateCountdownDefault);
-  const updateDeepFocusDefault = useAppStore((state) => state.updateDeepFocusDefault);
-  const setBathroomBreakDurationSec = useAppStore((state) => state.setBathroomBreakDurationSec);
-  const setAbsenceAlertThresholdSec = useAppStore((state) => state.setAbsenceAlertThresholdSec);
-  const {
-    activeSession,
-    completionDraft,
-    displayMs,
-    elapsedMs,
-    progress,
-    startSession,
-    pauseSession,
-    resumeSession,
-    resetSession,
-    stopSession,
-    skipBreak,
-    saveCompletion,
-    saveAndStartAnother,
-    saveAndStartBreak,
-    updateCompletionNote,
-  } = useTimerEngine();
-  const { activeBathroomBreak, remainingMs: bathroomBreakRemainingMs, startBathroomBreak, cancelBathroomBreak } =
-    useBathroomBreak();
+export default function StudyTimerPage() {
+  const [status, setStatus] = useState<BackendStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [configInitialized, setConfigInitialized] = useState(false);
 
-  const analytics = useMemo(() => getDashboardAnalytics(sessions, todos), [sessions, todos]);
-  const displayMode = activeSession?.mode ?? activeMode;
-  const statusLabel = activeSession ? (activeSession.isRunning ? "In progress" : "Paused") : "Ready";
-  const subjectId = activeSession?.subjectId ?? selectedSubjectId;
-  const plannedDurationLabel = activeSession?.plannedDurationMs
-    ? formatDurationLabel(activeSession.plannedDurationMs)
-    : displayMode === "countdown"
-      ? formatDurationLabel(settings.timerDefaults.countdown.durationMin * 60000)
-      : displayMode === "deep-focus"
-        ? formatDurationLabel(settings.timerDefaults.deepFocusDurationMin * 60000)
-        : displayMode === "pomodoro"
-          ? formatDurationLabel(settings.timerDefaults.pomodoro.focusDurationMin * 60000)
-          : "Open-ended";
-  const phaseLabel =
-    activeSession?.mode === "pomodoro" ? getPomodoroPhaseLabel(activeSession.pomodoroPhase) : modeMeta[displayMode].label;
-  const currentQuote = focusQuotes[(analytics.overview.sessionsThisWeek + subjectId.length) % focusQuotes.length];
+  const [studySeconds, setStudySeconds] = useState(60 * 60);
+  const [breakSeconds, setBreakSeconds] = useState(30 * 60);
+  const [absenceSeconds, setAbsenceSeconds] = useState(30);
+  const [bathroomSeconds, setBathroomSeconds] = useState(5 * 60);
 
-  if (!hydrated) {
-    return (
-      <main className="min-h-screen">
-        <section className={landingFrame}>
-          <div className="h-14 w-56 rounded-2xl bg-white/5" />
-          <div className="mt-8 grid items-start gap-5 xl:grid-cols-[336px_minmax(0,1fr)]">
-            <div className="h-[620px] rounded-[32px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)]" />
-            <div className="h-[620px] rounded-[40px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)]" />
-          </div>
-        </section>
-      </main>
-    );
-  }
+  const [selectedMode, setSelectedMode] = useState<"chill" | "regular" | "exams" | "custom">("regular");
+
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [todoInput, setTodoInput] = useState("");
+
+  const [alarmEnabled, setAlarmEnabled] = useState(false);
+  const alarmRef = useRef<HTMLAudioElement | null>(null);
+  const previousPhaseRef = useRef<SessionState["phase"] | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const data = await fetchJson<BackendStatus>("/status");
+      setStatus(data);
+      setError(null);
+
+      if (!configInitialized) {
+        setStudySeconds(data.config.study_duration_seconds);
+        setBreakSeconds(data.config.break_duration_seconds);
+        setAbsenceSeconds(data.config.absence_timeout_seconds);
+        setBathroomSeconds(data.config.bathroom_break_seconds);
+        setConfigInitialized(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not reach backend");
+    } finally {
+      setLoading(false);
+    }
+  }, [configInitialized]);
+
+  useEffect(() => {
+    loadStatus();
+    const interval = setInterval(loadStatus, 1000);
+    return () => clearInterval(interval);
+  }, [loadStatus]);
+
+  useEffect(() => {
+    const currentAlert = Boolean(status?.alert_active);
+
+    if (!alarmRef.current) {
+      return;
+    }
+
+    if (alarmEnabled && currentAlert) {
+      if (alarmRef.current.paused) {
+        alarmRef.current.currentTime = 0;
+        alarmRef.current.play().catch(() => {
+          // Browser may block autoplay if user has not interacted.
+        });
+      }
+      return;
+    }
+
+    alarmRef.current.pause();
+    alarmRef.current.currentTime = 0;
+  }, [alarmEnabled, status?.alert_active]);
+
+  useEffect(() => {
+    const phase = status?.session?.phase;
+    const active = Boolean(status?.session?.active);
+
+    if (!active || !phase) {
+      previousPhaseRef.current = phase ?? null;
+      return;
+    }
+
+    const previousPhase = previousPhaseRef.current;
+    const didPhaseSwitch = previousPhase && previousPhase !== phase;
+
+    if (didPhaseSwitch) {
+      try {
+        const audioContext = new window.AudioContext();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(660, audioContext.currentTime + 0.12);
+
+        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.14, audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.14);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.15);
+
+        oscillator.onended = () => {
+          void audioContext.close();
+        };
+      } catch {
+        // Ignore audio-context errors silently.
+      }
+    }
+
+    previousPhaseRef.current = phase;
+  }, [status?.session?.active, status?.session?.phase]);
+
+  const saveConfig = useCallback(async () => {
+    await fetchJson("/config", {
+      method: "POST",
+      body: JSON.stringify({
+        poll_interval_seconds: 1,
+        study_duration_seconds: studySeconds,
+        break_duration_seconds: breakSeconds,
+        absence_timeout_seconds: absenceSeconds,
+        bathroom_break_seconds: bathroomSeconds,
+      }),
+    });
+    await loadStatus();
+  }, [absenceSeconds, bathroomSeconds, breakSeconds, loadStatus, studySeconds]);
+
+  const applyMode = useCallback(
+    async (mode: "chill" | "regular" | "exams") => {
+      const preset = MODE_PRESETS[mode];
+      setSelectedMode(mode);
+      setStudySeconds(preset.study);
+      setBreakSeconds(preset.break);
+
+      await fetchJson("/config", {
+        method: "POST",
+        body: JSON.stringify({
+          poll_interval_seconds: 1,
+          study_duration_seconds: preset.study,
+          break_duration_seconds: preset.break,
+          absence_timeout_seconds: absenceSeconds,
+          bathroom_break_seconds: bathroomSeconds,
+        }),
+      });
+      await loadStatus();
+    },
+    [absenceSeconds, bathroomSeconds, loadStatus],
+  );
+
+  const startSession = useCallback(async () => {
+    await saveConfig();
+    await fetchJson("/session/start", {
+      method: "POST",
+      body: JSON.stringify({ mode: selectedMode }),
+    });
+    await loadStatus();
+  }, [loadStatus, saveConfig, selectedMode]);
+
+  const stopSession = useCallback(async () => {
+    await fetchJson("/session/stop", { method: "POST" });
+    await loadStatus();
+  }, [loadStatus]);
+
+  const pauseSession = useCallback(async () => {
+    await fetchJson("/session/pause", { method: "POST" });
+    await loadStatus();
+  }, [loadStatus]);
+
+  const resumeSession = useCallback(async () => {
+    await fetchJson("/session/resume", { method: "POST" });
+    await loadStatus();
+  }, [loadStatus]);
+
+  const startBathroomBreak = useCallback(async () => {
+    await saveConfig();
+    await fetchJson("/bathroom-break/start", { method: "POST" });
+    await loadStatus();
+  }, [loadStatus, saveConfig]);
+
+  const cancelBathroomBreak = useCallback(async () => {
+    await fetchJson("/bathroom-break/cancel", { method: "POST" });
+    await loadStatus();
+  }, [loadStatus]);
+
+  const addTodo = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const value = todoInput.trim();
+      if (!value) {
+        return;
+      }
+
+      setTodos((prev) => [...prev, { id: crypto.randomUUID(), text: value, done: false }]);
+      setTodoInput("");
+    },
+    [todoInput],
+  );
+
+  const toggleTodo = useCallback((id: string) => {
+    setTodos((prev) => prev.map((todo) => (todo.id === id ? { ...todo, done: !todo.done } : todo)));
+  }, []);
+
+  const removeTodo = useCallback((id: string) => {
+    setTodos((prev) => prev.filter((todo) => todo.id !== id));
+  }, []);
+
+  const session = status?.session;
+  const sessionActive = Boolean(session?.active);
+  const sessionPaused = Boolean(session?.manual_paused);
+  const bathroomActive = Boolean(session?.bathroom_break_active);
+  const sessionRunning = sessionActive && session?.phase === "study" && !sessionPaused && !bathroomActive;
+  const displayedTimerSeconds = sessionActive ? (session?.phase_remaining_seconds ?? studySeconds) : studySeconds;
+  const canAdjust = !sessionActive;
+
+  const sessionStatusLabel = useMemo(() => {
+    if (!sessionActive) {
+      return "Stopped";
+    }
+    if (bathroomActive) {
+      return "Bathroom";
+    }
+    if (sessionPaused) {
+      return "Paused";
+    }
+    if (session?.phase === "break") {
+      return "On Break";
+    }
+    return "Studying";
+  }, [bathroomActive, session?.phase, sessionActive, sessionPaused]);
+
+  const centerPanelStateClasses = status?.alert_active
+    ? "border-red-400 bg-red-900/50"
+    : sessionRunning
+      ? "border-[var(--border-strong)] bg-[#1b1412]"
+      : "border-[var(--border-strong)] bg-[#2a211d]";
 
   return (
-    <main className="min-h-screen">
-      <section className={landingFrame}>
-        <header className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-2">
-            <Link
-              href="/"
-              className="focus-ring inline-block text-[2.8rem] font-semibold tracking-[-0.06em] text-[var(--text)] md:text-[4.2rem] md:leading-none"
-            >
-              {appName}
-            </Link>
-            <p className="max-w-md text-sm leading-6 text-[var(--text-muted)]">{appTagline}</p>
-          </div>
-          <nav className="flex items-center gap-2 self-start">
-            <Link
-              href="/app/history"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "rounded-full px-4")}
-            >
-              <History className="size-4" />
-              History
-            </Link>
-            <Link
-              href="/app/settings"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "rounded-full px-4")}
-            >
-              <Settings2 className="size-4" />
-              Settings
-            </Link>
-          </nav>
-        </header>
+    <main className="mx-auto min-h-screen w-full max-w-[1650px] px-4 py-8 md:px-8">
+      <audio loop ref={alarmRef} src="/alarm.mp3" preload="auto" />
 
-        <section className={`mt-8 grid items-start ${landingGridGap} xl:grid-cols-[336px_minmax(0,1fr)]`}>
-          <TodoPanel
-            todos={todos}
-            onAdd={addTodo}
-            onToggle={toggleTodo}
-            onDelete={deleteTodo}
-            onClearCompleted={clearCompletedTodos}
-          />
+      <header className="mb-6 text-center">
+        <h1 className="text-4xl font-semibold tracking-[-0.04em] md:text-5xl">
+          <span className="inline-block rounded-md bg-white px-3 py-1 text-[var(--bg)]">LockedIn</span> Study Timer
+        </h1>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Stay in frame and stay focused.</p>
+      </header>
 
-          <Card className="surface-grid rounded-[40px] border-[var(--border-strong)]">
-            <CardContent className="space-y-6 px-4 py-4 md:px-8 md:py-8">
-              <div className="space-y-4">
-                <ModeSwitcher
-                  value={activeMode}
-                  pomodoroConfig={settings.timerDefaults.pomodoro}
-                  onChange={setActiveMode}
-                  onApplyPreset={(focusMin, breakMin) =>
-                    updatePomodoroDefaults({
-                      focusDurationMin: focusMin,
-                      shortBreakDurationMin: breakMin,
-                      longBreakDurationMin: breakMin,
-                    })
-                  }
-                  disabled={Boolean(activeSession)}
-                />
-                {activeSession ? (
-                  <p className="text-center text-sm text-[var(--text-subtle)]">
-                    Finish or stop the current session before switching modes.
-                  </p>
-                ) : null}
-              </div>
+      <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_280px] xl:grid-cols-[300px_minmax(0,1.25fr)_300px]">
+        <aside className="panel rounded-2xl p-4">
+          <h2 className="text-lg font-semibold">Settings</h2>
+          <p className="mt-1 text-xs text-[var(--text-subtle)]">Adjust sliders before starting a session.</p>
 
-              <div className="rounded-[34px] border border-[var(--border-strong)] bg-[linear-gradient(180deg,var(--bg-elevated)_0%,rgba(255,255,255,0.015)_100%)] px-5 py-8 md:px-8 md:py-10">
-                <div className="flex flex-col items-center text-center">
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    <span className="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-[var(--text-subtle)]">
-                      {phaseLabel}
-                    </span>
-                    <LabelChip subjectId={subjectId} />
-                    <span className="rounded-full border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]">
-                      Planned {plannedDurationLabel}
-                    </span>
-                  </div>
-
-                  <p className="mt-8 text-xs uppercase tracking-[0.24em] text-[var(--text-subtle)]">
-                    {activeSession?.mode === "stopwatch" ? "Elapsed" : "Remaining"}
-                  </p>
-                  <div className="mt-4 text-[4.75rem] font-semibold tracking-[-0.06em] text-[var(--text)] md:text-[7.5rem] md:leading-none">
-                    {formatDuration(displayMs)}
-                  </div>
-                  <div className="mt-5 flex flex-wrap items-center justify-center gap-5 text-sm text-[var(--text-muted)]">
-                    <span>Status {statusLabel}</span>
-                    <span>Elapsed {formatDuration(elapsedMs)}</span>
-                    <span>{Math.round(progress * 100)}% through session</span>
-                  </div>
-
-                  {displayMode !== "stopwatch" ? (
-                    <div className="mt-6 w-full max-w-[620px]">
-                      <div className="h-2 rounded-full bg-white/6">
-                        <div
-                          className="h-2 rounded-full bg-[var(--accent)] transition-[width] duration-300"
-                          style={{ width: `${Math.max(progress * 100, activeSession ? 2 : 0)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-8 flex justify-center">
-                    <TimerControls
-                      activeSession={activeSession}
-                      onStart={() => startSession(displayMode)}
-                      onPause={pauseSession}
-                      onResume={resumeSession}
-                      onReset={() => {
-                        if (activeSession) {
-                          resetSession();
-                          return;
-                        }
-
-                        setQuickNote("");
-                      }}
-                      onStop={stopSession}
-                      onSkipBreak={skipBreak}
-                    />
-                  </div>
-
-                  <p className="mt-6 max-w-xl text-sm leading-6 text-[var(--text-muted)]">{currentQuote}</p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-[0.72fr_1.28fr]">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-[var(--text)]" htmlFor="landing-subject">
-                    Subject
-                  </label>
-                  <Select
-                    id="landing-subject"
-                    value={selectedSubjectId}
-                    disabled={Boolean(activeSession)}
-                    onChange={(event) => setSelectedSubjectId(event.target.value)}
-                  >
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-[var(--text)]" htmlFor="landing-note">
-                    Session note
-                  </label>
-                  <Input
-                    id="landing-note"
-                    value={quickNote}
-                    disabled={Boolean(activeSession)}
-                    onChange={(event) => setQuickNote(event.target.value)}
-                    placeholder="What are you working on?"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-4 md:px-5">
-                {displayMode === "pomodoro" ? (
-                  <PomodoroPresetControls
-                    config={settings.timerDefaults.pomodoro}
-                    disabled={Boolean(activeSession)}
-                    onFocusChange={(focusMin) => updatePomodoroDefaults({ focusDurationMin: clampNumber(focusMin, 15, 180) })}
-                    onBreakChange={(breakMin) =>
-                      updatePomodoroDefaults({
-                        shortBreakDurationMin: clampNumber(breakMin, 5, 60),
-                        longBreakDurationMin: clampNumber(breakMin, 5, 60),
-                      })
-                    }
-                  />
-                ) : null}
-
-                {displayMode === "countdown" ? (
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-[var(--text)]">Countdown duration</p>
-                      <p className="text-sm text-[var(--text-muted)]">Set a target duration and start immediately.</p>
-                    </div>
-                    <div className="w-full md:w-[180px]">
-                      <Input
-                        type="number"
-                        min={5}
-                        max={240}
-                        value={settings.timerDefaults.countdown.durationMin}
-                        disabled={Boolean(activeSession)}
-                        onChange={(event) => updateCountdownDefault(clampNumber(Number(event.target.value), 5, 240))}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                {displayMode === "deep-focus" ? (
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-[var(--text)]">Deep Focus duration</p>
-                      <p className="text-sm text-[var(--text-muted)]">
-                        Keep the main timer here, then step into the fuller workspace when you want the immersive view.
-                      </p>
-                    </div>
-                    <div className="w-full md:w-[180px]">
-                      <Input
-                        type="number"
-                        min={15}
-                        max={240}
-                        value={settings.timerDefaults.deepFocusDurationMin}
-                        disabled={Boolean(activeSession)}
-                        onChange={(event) => updateDeepFocusDefault(clampNumber(Number(event.target.value), 15, 240))}
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                {displayMode === "stopwatch" ? (
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text)]">Open-ended tracking</p>
-                      <p className="mt-1 text-sm text-[var(--text-muted)]">
-                        Start when you begin and stop when you are ready to save the session.
-                      </p>
-                    </div>
-                    <Link
-                      href="/app/history"
-                      className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "self-start rounded-full px-4")}
-                    >
-                      Review history
-                    </Link>
-                  </div>
-                ) : null}
-              </div>
-
-              <BathroomBreakCard
-                breakDurationSec={settings.bathroomBreakDurationSec}
-                absenceAlertThresholdSec={settings.absenceAlertThresholdSec}
-                activeBathroomBreak={activeBathroomBreak}
-                remainingMs={bathroomBreakRemainingMs}
-                onBreakDurationChange={setBathroomBreakDurationSec}
-                onThresholdChange={setAbsenceAlertThresholdSec}
-                onStart={startBathroomBreak}
-                onCancel={cancelBathroomBreak}
+          <div className="mt-4 space-y-4 text-sm">
+            <label className="block">
+              <span>Study time: {secondsToMinutesString(studySeconds)} min</span>
+              <input
+                className="mt-1 w-full"
+                disabled={!canAdjust}
+                max={180}
+                min={5}
+                onChange={(event) => {
+                  setSelectedMode("custom");
+                  setStudySeconds(Number(event.target.value) * 60);
+                }}
+                type="range"
+                value={Math.round(studySeconds / 60)}
               />
-            </CardContent>
-          </Card>
+            </label>
+
+            <label className="block">
+              <span>Break time: {secondsToMinutesString(breakSeconds)} min</span>
+              <input
+                className="mt-1 w-full"
+                disabled={!canAdjust}
+                max={60}
+                min={5}
+                onChange={(event) => {
+                  setSelectedMode("custom");
+                  setBreakSeconds(Number(event.target.value) * 60);
+                }}
+                type="range"
+                value={Math.round(breakSeconds / 60)}
+              />
+            </label>
+
+            <label className="block">
+              <span>Absence alert: {absenceSeconds} sec</span>
+              <input
+                className="mt-1 w-full"
+                disabled={!canAdjust}
+                max={300}
+                min={5}
+                onChange={(event) => setAbsenceSeconds(Number(event.target.value))}
+                type="range"
+                value={absenceSeconds}
+              />
+            </label>
+
+            <label className="block">
+              <span>Bathroom break: {secondsToMinutesString(bathroomSeconds)} min</span>
+              <input
+                className="mt-1 w-full"
+                disabled={!canAdjust}
+                max={30}
+                min={1}
+                onChange={(event) => setBathroomSeconds(Number(event.target.value) * 60)}
+                type="range"
+                value={Math.round(bathroomSeconds / 60)}
+              />
+            </label>
+          </div>
+
+          <button className="mt-4 w-full rounded-lg border px-3 py-2 text-sm" disabled={!canAdjust} onClick={saveConfig} type="button">
+            Save Settings
+          </button>
+
+          <button
+            className="mt-3 w-full rounded-lg border border-amber-300/40 bg-amber-400/10 px-3 py-2 text-sm"
+            onClick={async () => {
+              setAlarmEnabled(true);
+              if (alarmRef.current) {
+                try {
+                  alarmRef.current.currentTime = 0;
+                  await alarmRef.current.play();
+                  alarmRef.current.pause();
+                  alarmRef.current.currentTime = 0;
+                } catch {
+                  // User may need another interaction in some browsers.
+                }
+              }
+            }}
+            type="button"
+          >
+            {alarmEnabled ? "Alarm Enabled" : "Enable Alarm Sound"}
+          </button>
+        </aside>
+
+        <section className={`rounded-2xl border p-8 md:p-10 ${centerPanelStateClasses}`}>
+          <div className="mb-6 flex justify-center gap-2">
+            <button
+              className={`rounded-lg border px-4 py-2 text-sm ${selectedMode === "chill" ? "bg-[var(--accent-soft)]" : ""}`}
+              disabled={!canAdjust}
+              onClick={() => applyMode("chill")}
+              type="button"
+            >
+              Chill
+            </button>
+            <button
+              className={`rounded-lg border px-4 py-2 text-sm ${selectedMode === "regular" ? "bg-[var(--accent-soft)]" : ""}`}
+              disabled={!canAdjust}
+              onClick={() => applyMode("regular")}
+              type="button"
+            >
+              Regular
+            </button>
+            <button
+              className={`rounded-lg border px-4 py-2 text-sm ${selectedMode === "exams" ? "bg-[var(--accent-soft)]" : ""}`}
+              disabled={!canAdjust}
+              onClick={() => applyMode("exams")}
+              type="button"
+            >
+              Exams
+            </button>
+          </div>
+
+          <div className="text-center">
+            <p className="mx-auto inline-flex rounded-full border border-[var(--border-strong)] bg-[rgba(255,255,255,0.06)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text)]">
+              {sessionStatusLabel}
+            </p>
+            <div className="mt-5 text-7xl font-semibold leading-none tracking-[-0.05em] md:text-9xl">
+              {formatClock(displayedTimerSeconds)}
+            </div>
+            <p className="mt-3 text-sm text-[var(--text-muted)]">Total active: {formatClock(session?.total_active_seconds ?? 0)}</p>
+          </div>
+
+          <div className="mt-10 grid gap-3 md:grid-cols-3">
+            <button
+              className="rounded-xl border px-4 py-5 text-lg font-semibold"
+              onClick={sessionActive ? stopSession : startSession}
+              type="button"
+            >
+              {sessionActive ? "Stop" : "Start"}
+            </button>
+
+            <button
+              className="rounded-xl border px-4 py-5 text-lg font-semibold"
+              disabled={!sessionActive}
+              onClick={sessionPaused ? resumeSession : pauseSession}
+              type="button"
+            >
+              {sessionPaused ? "Resume" : "Pause"}
+            </button>
+
+            <button
+              className="rounded-xl border px-4 py-5 text-lg font-semibold"
+              disabled={!sessionActive}
+              onClick={bathroomActive ? cancelBathroomBreak : startBathroomBreak}
+              type="button"
+            >
+              {bathroomActive ? "End Bathroom" : "Bathroom"}
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-1 text-sm text-[var(--text-muted)] md:grid-cols-2">
+            <p>Presence: {status?.present ? "Present" : "Not in frame"}</p>
+            <p>Alert: {status?.alert_active ? "ALERT" : "Normal"}</p>
+            <p>Alert in: {status?.seconds_until_alert ?? 0}s</p>
+            <p>Bathroom: {bathroomActive ? `${session?.bathroom_seconds_left ?? 0}s left` : "Inactive"}</p>
+            <p>Manual pause: {sessionPaused ? "Paused" : "Running"}</p>
+            <p>Last error: {status?.last_error ?? "None"}</p>
+          </div>
         </section>
 
-        <section className={`mt-5 grid ${landingGridGap} lg:grid-cols-[0.78fr_0.78fr_0.88fr_1.16fr]`}>
-          <div className="rounded-[28px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-5 py-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Today</p>
-            <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text)]">
-              {formatDurationLabel(analytics.overview.todayFocusMs)}
-            </p>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">Completed focus time saved today.</p>
-          </div>
-          <div className="rounded-[28px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-5 py-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Streak</p>
-            <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text)]">
-              {analytics.overview.streakCount} days
-            </p>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">Best day this week: {analytics.overview.bestDayLabel}.</p>
-          </div>
-          <div className="rounded-[28px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-5 py-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Tasks</p>
-            <p className="mt-3 text-3xl font-semibold tracking-tight text-[var(--text)]">
-              {analytics.todoSummary.completedToday}
-            </p>
-            <p className="mt-2 text-sm text-[var(--text-muted)]">
-              {analytics.todoSummary.openCount} still open, {analytics.todoSummary.completedThisWeek} completed this week.
-            </p>
-          </div>
-          <div className="rounded-[28px] border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-5 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">Recent sessions</p>
-                <p className="mt-2 text-sm text-[var(--text-muted)]">A compact view of your latest saved work.</p>
+        <aside className="panel rounded-2xl p-4">
+          <h2 className="text-lg font-semibold">Checklist</h2>
+          <form className="mt-3 flex gap-2" onSubmit={addTodo}>
+            <input
+              className="w-full rounded-lg border bg-transparent px-3 py-2 text-sm"
+              onChange={(event) => setTodoInput(event.target.value)}
+              placeholder="Add task"
+              value={todoInput}
+            />
+            <button className="rounded-lg border px-3 py-2 text-sm" type="submit">
+              Add
+            </button>
+          </form>
+
+          <div className="mt-3 space-y-2">
+            {todos.length === 0 ? <p className="text-sm text-[var(--text-muted)]">No tasks yet.</p> : null}
+            {todos.map((todo) => (
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2" key={todo.id}>
+                <label className="flex items-center gap-2 text-sm">
+                  <input checked={todo.done} onChange={() => toggleTodo(todo.id)} type="checkbox" />
+                  <span className={todo.done ? "line-through text-[var(--text-subtle)]" : ""}>{todo.text}</span>
+                </label>
+                <button className="text-xs text-[var(--text-subtle)]" onClick={() => removeTodo(todo.id)} type="button">
+                  Remove
+                </button>
               </div>
-              <Link
-                href="/app/history"
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "rounded-full px-4")}
-              >
-                View all
-              </Link>
-            </div>
-            <div className="mt-4 space-y-3">
-              {analytics.recentSessions.length === 0 ? (
-                <p className="text-sm leading-6 text-[var(--text-muted)]">No sessions saved yet. Start here and your history will build as you go.</p>
-              ) : (
-                analytics.recentSessions.slice(0, 2).map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <LabelChip subjectId={session.subjectId} />
-                      <p className="mt-2 text-sm font-medium text-[var(--text)]">{formatDurationLabel(session.actualDurationMs)}</p>
-                      <p className="mt-1 truncate text-sm text-[var(--text-muted)]">{session.note?.trim() || modeMeta[session.mode].label}</p>
-                    </div>
-                    <div className="shrink-0 text-right text-xs text-[var(--text-subtle)]">
-                      <p>{formatClock(session.endedAt)}</p>
-                      <p className="mt-1">{modeMeta[session.mode].label}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            ))}
           </div>
-        </section>
+        </aside>
       </section>
 
-      <CompletionModal
-        draft={completionDraft}
-        activeSession={activeSession}
-        onSave={saveCompletion}
-        onStartAnother={saveAndStartAnother}
-        onStartBreak={saveAndStartBreak}
-        onNoteChange={updateCompletionNote}
-      />
+      {loading ? <p className="mt-4 text-sm text-[var(--text-muted)]">Loading...</p> : null}
+      {error ? <p className="mt-4 text-sm text-red-300">Backend error: {error}</p> : null}
+
+      <footer className="mt-8 border-t pt-4 text-center text-xs text-[var(--text-subtle)]">
+        ECEHacks 2026 | Arman Mahdavi | Aadit Mital | TMU Electrical/Computer Engineering 2026
+      </footer>
     </main>
   );
 }
