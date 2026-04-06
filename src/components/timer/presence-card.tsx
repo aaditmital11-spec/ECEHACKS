@@ -155,6 +155,11 @@ export function PresenceCard({
           <p className="mt-2 text-sm font-medium text-[var(--text)]">
             {settings.alarmEnabled ? (runtime.isAlarmPlaying ? "Playing" : "Armed") : "Muted"}
           </p>
+          {settings.alarmEnabled ? (
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Up to {formatSecondsLabel(settings.alarmDurationSec)}, or stops when you are back in frame.
+            </p>
+          ) : null}
         </div>
       </div>
 

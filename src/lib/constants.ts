@@ -89,11 +89,12 @@ export const defaultSettings: AppSettings = {
   bathroomBreakDurationSec: 120,
   absenceAlertThresholdSec: 90,
   presence: {
-    enabled: false,
+    enabled: true,
     minimumAbsenceSec: 10,
     recoveryDurationSec: 60,
     autoResume: false,
     alarmEnabled: true,
+    alarmDurationSec: 10,
     cameraPanelVisible: true,
   },
   timerDefaults: {

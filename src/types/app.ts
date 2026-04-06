@@ -98,6 +98,8 @@ export interface AppSettings {
     recoveryDurationSec: number;
     autoResume: boolean;
     alarmEnabled: boolean;
+    /** How long the away alarm repeats (beeps until this elapses or you return). */
+    alarmDurationSec: number;
     cameraPanelVisible: boolean;
   };
   timerDefaults: {
@@ -129,6 +131,8 @@ export interface PresenceRuntimeState {
   recoveryDeadlineAt: number | null;
   recoveryTimeRemainingMs: number;
   isAlarmPlaying: boolean;
+  /** Wall time when the current alarm burst started; null if not ringing. */
+  alarmStartedAt: number | null;
   sessionFailureReason: SessionFailureReason | null;
   serviceStatus: PresenceServiceStatus;
   cameraStatus: PresenceCameraStatus;

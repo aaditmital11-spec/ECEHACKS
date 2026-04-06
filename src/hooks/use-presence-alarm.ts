@@ -54,18 +54,23 @@ export function usePresenceAlarm(shouldPlay: boolean) {
       }
 
       intervalRef.current = window.setInterval(() => {
-        if (context.state !== "running") {
-          void primePresenceAlarmAudio();
-          return;
-        }
-
-        playPresenceAlarmPattern(context);
-      }, 1800);
+        void (async () => {
+          const ctx = await primePresenceAlarmAudio();
+          if (ctx?.state === "running") {
+            playPresenceAlarmPattern(ctx);
+          }
+        })();
+      }, 650);
     }
 
     if (shouldPlay) {
       void startAlarmLoop();
-      return undefined;
+      return () => {
+        if (intervalRef.current !== null) {
+          window.clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
     }
 
     if (intervalRef.current !== null) {

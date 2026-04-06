@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useBathroomBreak } from "@/hooks/use-bathroom-break";
-import { studyPresets } from "@/lib/constants";
+import { defaultSettings, studyPresets } from "@/lib/constants";
 import { appThemes } from "@/types/app";
 import { useAppStore } from "@/store/app-store";
 
@@ -215,7 +215,10 @@ export default function SettingsPage() {
             onStart={startBathroomBreak}
             onCancel={cancelBathroomBreak}
           />
-          <PresenceSettingsCard settings={settings.presence} onChange={updatePresenceSettings} />
+          <PresenceSettingsCard
+            settings={settings.presence ?? defaultSettings.presence}
+            onChange={updatePresenceSettings}
+          />
         </div>
       </SettingsPanel>
 

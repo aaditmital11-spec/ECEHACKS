@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Camera, Siren, Timer, UserRoundCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { previewPresenceAlarm } from "@/lib/presence-alarm";
+import { previewPresenceAlarm, primePresenceAlarmAudio } from "@/lib/presence-alarm";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { formatSecondsLabel } from "@/lib/time";
@@ -46,7 +46,15 @@ export function PresenceSettingsCard({
             <p className="text-sm font-medium text-[var(--text)]">Enabled</p>
             <p className="text-xs text-[var(--text-subtle)]">Applies while a focus session is active.</p>
           </div>
-          <Switch checked={settings.enabled} onCheckedChange={(checked) => onChange({ enabled: checked })} />
+          <Switch
+            checked={settings.enabled}
+            onCheckedChange={(checked) => {
+              if (checked) {
+                void primePresenceAlarmAudio();
+              }
+              onChange({ enabled: checked });
+            }}
+          />
         </div>
       </div>
 
@@ -101,12 +109,37 @@ export function PresenceSettingsCard({
               <Siren className="size-4 text-[var(--accent)]" />
               Alarm
             </div>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">Play a short repeating beep once focus lock is broken.</p>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              Beeps repeat until you are back on camera <span className="text-[var(--text)]">or</span> the ring duration
+              ends—whichever happens first (default 10s).
+            </p>
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
+                <span>Max ring time</span>
+                <span>{formatSecondsLabel(settings.alarmDurationSec)}</span>
+              </div>
+              <Slider
+                min={5}
+                max={60}
+                step={5}
+                value={settings.alarmDurationSec}
+                onChange={(event) => onChange({ alarmDurationSec: Number(event.target.value) })}
+              />
+              <p className="text-xs text-[var(--text-subtle)]">Set to 10s for “10 seconds or until I’m back.”</p>
+            </div>
             <Button className="mt-3" variant="secondary" size="sm" onClick={() => void handleTestAlarm()}>
               {testingAlarm ? "Testing..." : "Test alarm"}
             </Button>
           </div>
-          <Switch checked={settings.alarmEnabled} onCheckedChange={(checked) => onChange({ alarmEnabled: checked })} />
+          <Switch
+            checked={settings.alarmEnabled}
+            onCheckedChange={(checked) => {
+              if (checked) {
+                void primePresenceAlarmAudio();
+              }
+              onChange({ alarmEnabled: checked });
+            }}
+          />
         </div>
 
         <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[rgba(255,255,255,0.02)] p-4">

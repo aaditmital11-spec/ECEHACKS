@@ -2,16 +2,16 @@
 
 import { useEffect, useEffectEvent, useRef } from "react";
 
-import { presenceStatusUrl } from "@/lib/presence";
+import { normalizePresenceSnapshot, presenceStatusUrl } from "@/lib/presence";
 import {
   createCompletionDraft,
   createSessionRecord,
   getElapsedMs,
   isPresenceSensitiveSession,
 } from "@/lib/timer";
-import { subjects } from "@/lib/constants";
+import { defaultSettings, subjects } from "@/lib/constants";
 import { useAppStore } from "@/store/app-store";
-import type { PresenceServiceSnapshot } from "@/types/app";
+import type { PresenceRuntimeState, PresenceServiceSnapshot } from "@/types/app";
 
 import { usePresenceAlarm } from "./use-presence-alarm";
 
@@ -21,6 +21,7 @@ function getSubjectLabel(subjectId: string) {
 
 export function usePresenceMonitor() {
   const settings = useAppStore((state) => state.settings);
+  const presence = settings.presence ?? defaultSettings.presence;
   const activeSession = useAppStore((state) => state.activeSession);
   const presenceRuntime = useAppStore((state) => state.presenceRuntime);
   const patchActiveSession = useAppStore((state) => state.patchActiveSession);
@@ -31,21 +32,47 @@ export function usePresenceMonitor() {
   const useAppStoreRef = useRef(useAppStore);
   const presencePausedSessionIdRef = useRef<string | null>(null);
 
-  usePresenceAlarm(presenceRuntime.isAlarmPlaying && settings.presence.alarmEnabled);
+  usePresenceAlarm(presenceRuntime.isAlarmPlaying && presence.alarmEnabled);
 
   const syncPresenceDurations = useEffectEvent(() => {
     const state = useAppStoreRef.current.getState();
     const runtime = state.presenceRuntime;
+    const presenceSettings = state.settings.presence ?? defaultSettings.presence;
     const now = Date.now();
 
-    const absentDurationMs =
+    const fromLastSeen =
       runtime.isPresent || runtime.lastPresentAt === null ? 0 : Math.max(0, now - runtime.lastPresentAt);
+    const absentDurationMs = runtime.isPresent
+      ? 0
+      : Math.max(fromLastSeen, runtime.absentDurationMs);
     const recoveryTimeRemainingMs = runtime.recoveryDeadlineAt ? Math.max(0, runtime.recoveryDeadlineAt - now) : 0;
 
-    patchPresenceRuntime({
+    const patches: Partial<PresenceRuntimeState> = {
       absentDurationMs,
       recoveryTimeRemainingMs,
-    });
+    };
+
+    let alarmStartedAt = runtime.alarmStartedAt;
+    if (runtime.isAlarmPlaying && presenceSettings.alarmEnabled && alarmStartedAt === null) {
+      alarmStartedAt = now;
+      patches.alarmStartedAt = now;
+    }
+
+    // Alarm: repeat beeps until back in frame OR alarmDurationSec elapses (default 10s).
+    if (runtime.isAlarmPlaying) {
+      if (runtime.isPresent || !presenceSettings.alarmEnabled) {
+        patches.isAlarmPlaying = false;
+        patches.alarmStartedAt = null;
+      } else if (alarmStartedAt !== null) {
+        const alarmElapsedMs = now - alarmStartedAt;
+        if (alarmElapsedMs >= presenceSettings.alarmDurationSec * 1000) {
+          patches.isAlarmPlaying = false;
+          patches.alarmStartedAt = null;
+        }
+      }
+    }
+
+    patchPresenceRuntime(patches);
   });
 
   const handleRecoveryReset = useEffectEvent((awaitingManualResume = false) => {
@@ -56,12 +83,14 @@ export function usePresenceMonitor() {
       recoveryDeadlineAt: null,
       recoveryTimeRemainingMs: 0,
       isAlarmPlaying: false,
+      alarmStartedAt: null,
       awaitingManualResume,
     });
   });
 
   const pauseForPresence = useEffectEvent(() => {
-    if (!activeSession?.isRunning) {
+    const session = useAppStoreRef.current.getState().activeSession;
+    if (!session?.isRunning) {
       return;
     }
 
@@ -69,18 +98,22 @@ export function usePresenceMonitor() {
     patchActiveSession({
       isRunning: false,
       pausedAt,
-      accumulatedMs: getElapsedMs(activeSession, pausedAt),
+      accumulatedMs: getElapsedMs(session, pausedAt),
       lastResumedAt: null,
     });
-    presencePausedSessionIdRef.current = activeSession.id;
+    presencePausedSessionIdRef.current = session.id;
   });
 
   const resumeAfterPresence = useEffectEvent(() => {
-    if (!activeSession || activeSession.isRunning || presencePausedSessionIdRef.current !== activeSession.id) {
+    const state = useAppStoreRef.current.getState();
+    const session = state.activeSession;
+    const presenceSettings = state.settings.presence ?? defaultSettings.presence;
+
+    if (!session || session.isRunning || presencePausedSessionIdRef.current !== session.id) {
       return;
     }
 
-    if (settings.presence.autoResume) {
+    if (presenceSettings.autoResume) {
       const resumedAt = Date.now();
       patchActiveSession({
         isRunning: true,
@@ -96,23 +129,24 @@ export function usePresenceMonitor() {
   });
 
   const failSessionForExtendedAbsence = useEffectEvent(() => {
-    if (!activeSession) {
+    const session = useAppStoreRef.current.getState().activeSession;
+    if (!session) {
       return;
     }
 
     const interruptedAt = Date.now();
-    const actualDurationMs = getElapsedMs(activeSession, interruptedAt);
+    const actualDurationMs = getElapsedMs(session, interruptedAt);
 
-    if (actualDurationMs >= 1000 && isPresenceSensitiveSession(activeSession)) {
+    if (actualDurationMs >= 1000 && isPresenceSensitiveSession(session)) {
       addSession(
         createSessionRecord({
           completion: createCompletionDraft({
-            session: activeSession,
+            session,
             actualDurationMs,
             completedAsPlanned: false,
             endedAt: interruptedAt,
           }),
-          subjectLabel: getSubjectLabel(activeSession.subjectId),
+          subjectLabel: getSubjectLabel(session.subjectId),
           status: "interrupted",
         }),
       );
@@ -128,6 +162,7 @@ export function usePresenceMonitor() {
       recoveryDeadlineAt: null,
       recoveryTimeRemainingMs: 0,
       isAlarmPlaying: false,
+      alarmStartedAt: null,
       awaitingManualResume: false,
       sessionFailureReason: "extended-absence",
     });
@@ -154,6 +189,7 @@ export function usePresenceMonitor() {
       serviceError: error,
       previewAvailable: false,
       isAlarmPlaying: false,
+      alarmStartedAt: null,
     });
   });
 
@@ -171,7 +207,7 @@ export function usePresenceMonitor() {
           throw new Error(`Presence service returned ${response.status}.`);
         }
 
-        const snapshot = (await response.json()) as PresenceServiceSnapshot;
+        const snapshot = normalizePresenceSnapshot((await response.json()) as PresenceServiceSnapshot);
         if (cancelled) {
           return;
         }
@@ -230,7 +266,7 @@ export function usePresenceMonitor() {
 
   useEffect(() => {
     const isMonitoringReady =
-      settings.presence.enabled &&
+      presence.enabled &&
       presenceRuntime.serviceStatus === "ready" &&
       presenceRuntime.cameraStatus === "streaming";
 
@@ -260,11 +296,7 @@ export function usePresenceMonitor() {
     }
 
     const absenceThresholdReached =
-      presenceRuntime.absentDurationMs >= settings.presence.minimumAbsenceSec * 1000;
-
-    if (absenceThresholdReached && settings.presence.alarmEnabled && !presenceRuntime.isAlarmPlaying) {
-      patchPresenceRuntime({ isAlarmPlaying: true });
-    }
+      presenceRuntime.absentDurationMs >= presence.minimumAbsenceSec * 1000;
 
     if (
       !absenceThresholdReached ||
@@ -279,9 +311,10 @@ export function usePresenceMonitor() {
       hasTriggeredAbsenceEvent: true,
       isRecoveryCountdownActive: true,
       recoveryStartedAt,
-      recoveryDeadlineAt: recoveryStartedAt + settings.presence.recoveryDurationSec * 1000,
-      recoveryTimeRemainingMs: settings.presence.recoveryDurationSec * 1000,
-      isAlarmPlaying: settings.presence.alarmEnabled,
+      recoveryDeadlineAt: recoveryStartedAt + presence.recoveryDurationSec * 1000,
+      recoveryTimeRemainingMs: presence.recoveryDurationSec * 1000,
+      isAlarmPlaying: presence.alarmEnabled,
+      alarmStartedAt: presence.alarmEnabled ? recoveryStartedAt : null,
       awaitingManualResume: false,
       sessionFailureReason: null,
     });
@@ -294,10 +327,12 @@ export function usePresenceMonitor() {
     presenceRuntime.isPresent,
     presenceRuntime.isRecoveryCountdownActive,
     presenceRuntime.serviceStatus,
-    settings.presence.alarmEnabled,
-    settings.presence.enabled,
-    settings.presence.minimumAbsenceSec,
-    settings.presence.recoveryDurationSec,
+    presence.alarmEnabled,
+    presence.autoResume,
+    presence.enabled,
+    presence.minimumAbsenceSec,
+    presence.recoveryDurationSec,
+    presence.alarmDurationSec,
   ]);
 
   useEffect(() => {

@@ -41,6 +41,19 @@ function migrateMinimumAbsence(value: unknown) {
   return value;
 }
 
+function mergePresenceFromPersist(raw: AppSettings["presence"] | undefined): AppSettings["presence"] {
+  const base = defaultSettings.presence;
+  if (!raw || typeof raw !== "object") {
+    return { ...base };
+  }
+
+  return {
+    ...base,
+    ...raw,
+    minimumAbsenceSec: migrateMinimumAbsence(raw.minimumAbsenceSec),
+  };
+}
+
 interface AppStoreState {
   hydrated: boolean;
   settings: AppSettings;
@@ -111,6 +124,7 @@ const initialState = {
     recoveryDeadlineAt: null,
     recoveryTimeRemainingMs: 0,
     isAlarmPlaying: false,
+    alarmStartedAt: null,
     sessionFailureReason: null,
     serviceStatus: "offline",
     cameraStatus: "offline",
@@ -194,6 +208,7 @@ export const useAppStore = create<AppStoreState>()(
           settings: {
             ...state.settings,
             presence: {
+              ...defaultSettings.presence,
               ...state.settings.presence,
               ...patch,
             },
@@ -319,7 +334,7 @@ export const useAppStore = create<AppStoreState>()(
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.settings.defaultMode = migrateLegacyMode(state.settings.defaultMode, defaultSettings.defaultMode);
-          state.settings.presence.minimumAbsenceSec = migrateMinimumAbsence(state.settings.presence.minimumAbsenceSec);
+          state.settings.presence = mergePresenceFromPersist(state.settings.presence);
           state.activeMode = migrateLegacyMode(state.activeMode, state.settings.defaultMode);
           state.sessions = state.sessions.map((session) => ({
             ...session,

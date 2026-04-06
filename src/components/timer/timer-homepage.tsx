@@ -76,10 +76,13 @@ export function TimerHomepage() {
   const displayMode = activeSession?.mode ?? activeMode;
   const activeStudyPreset = getStudyPreset(displayMode);
   const presenceReady = isPresenceServiceReady(presenceRuntime);
-  const canStartWithPresence = !settings.presence.enabled || presenceReady;
+  /** Allow starting even if the local service is still booting; monitoring turns on once /status is healthy. */
+  const canStartWithPresence = true;
   const canResumeWithPresence =
     !settings.presence.enabled ||
-    (presenceReady && presenceRuntime.isPresent && !presenceRuntime.isRecoveryCountdownActive);
+    presenceRuntime.awaitingManualResume ||
+    !presenceRuntime.isRecoveryCountdownActive ||
+    (presenceReady && presenceRuntime.isPresent);
   const timerStatusLabel = presenceRuntime.isRecoveryCountdownActive
     ? "Recovery window"
     : presenceRuntime.awaitingManualResume
@@ -211,7 +214,7 @@ export function TimerHomepage() {
                   onSkipBreak={skipBreak}
                   startDisabled={!canStartWithPresence}
                   resumeDisabled={!canResumeWithPresence}
-                  startLabel={settings.presence.enabled && !canStartWithPresence ? "Waiting for camera" : "Start session"}
+                  startLabel="Start session"
                   resumeLabel={presenceRuntime.awaitingManualResume ? "Resume focus" : "Resume"}
                 />
               </div>
@@ -251,17 +254,31 @@ export function TimerHomepage() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium text-[var(--text)]">Focus lock</p>
-                      <p className="mt-1 text-sm text-[var(--text-muted)]">Pause and protect the session if you step away.</p>
+                      <p className="mt-1 text-sm text-[var(--text-muted)]">
+                        Pause and protect the session if you step away. Requires the local presence service (e.g.{" "}
+                        <code className="rounded bg-white/6 px-1 py-0.5 text-[0.8rem]">npm run dev:presence</code>).
+                      </p>
                     </div>
                     <Switch
                       checked={settings.presence.enabled}
-                      onCheckedChange={(checked) => updatePresenceSettings({ enabled: checked })}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          void primePresenceAlarmAudio();
+                        }
+                        updatePresenceSettings({ enabled: checked });
+                      }}
                     />
                   </div>
                   <p className="mt-4 inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--text-subtle)]">
                     <Sparkles className="size-3.5 text-[var(--accent)]" />
                     {presenceReady ? "Service ready" : "Awaiting camera"}
                   </p>
+                  {settings.presence.enabled && !presenceReady ? (
+                    <p className="mt-2 text-sm text-[var(--text-muted)]">
+                      Run the Python service on port 8765, then refresh—away detection starts automatically once the camera
+                      connects.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -396,7 +413,7 @@ export function TimerHomepage() {
                   onSkipBreak={skipBreak}
                   startDisabled={!canStartWithPresence}
                   resumeDisabled={!canResumeWithPresence}
-                  startLabel={settings.presence.enabled && !canStartWithPresence ? "Waiting for camera" : "Start session"}
+                  startLabel="Start session"
                   resumeLabel={presenceRuntime.awaitingManualResume ? "Resume focus" : "Resume"}
                 />
               </div>
